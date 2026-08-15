@@ -94,6 +94,13 @@ async function prepareRuntime() {
   fs.writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify(runtimePkg, null, 2) + '\n')
   log('[prepare] installing dsh runtime (this can take a few minutes)...')
   run('npm', ['install', '--prefix', runtimeDir, '--omit=dev', '--no-audit', '--no-fund'])
+  // npm on Windows can create a junction to the parent repo inside runtime/node_modules;
+  // remove it before archiving to avoid recursive "archive to itself" loops.
+  const selfLink = path.join(runtimeDir, 'node_modules', 'dsh-desktop')
+  if (fs.existsSync(selfLink)) {
+    log(`[prepare] removing self-link ${selfLink}`)
+    fs.rmSync(selfLink, { recursive: true, force: true })
+  }
   createArchive('runtime', 'runtime.tar.gz')
 
   // 2. profile-web template with the two plugins preinstalled.
