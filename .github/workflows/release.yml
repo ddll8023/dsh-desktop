@@ -17,13 +17,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            args: --mac dmg --arm64
+            args: --mac dmg --arm64 --publish never
             artifact: dsh-desktop-macos-arm64
           - os: macos-15-intel
-            args: --mac dmg --x64
+            args: --mac dmg --x64 --publish never
             artifact: dsh-desktop-macos-x64
           - os: windows-latest
-            args: --win nsis --x64
+            args: --win nsis --x64 --publish never
             artifact: dsh-desktop-windows-x64
     runs-on: ${{ matrix.os }}
     steps:
