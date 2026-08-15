@@ -10,8 +10,8 @@ DeepSeek Harness 桌面封装：内置 DSH Web、`dsh-codex` 和 `dsh-access-mod
 
 正式安装包发布在 GitHub Releases：
 
-- macOS：`DSH Desktop-<version>-arm64.dmg` / `DSH Desktop-<version>-x64.dmg`
-- Windows：`DSH Desktop-<version>-x64.zip`（免安装压缩包）
+- macOS：`DSH.Desktop-<version>-arm64.dmg` / `DSH.Desktop-<version>.dmg`
+- Windows：`DSH.Desktop-<version>-win.zip`（免安装压缩包）
 
 > 未签名的预览版在 macOS 会触发 Gatekeeper 提示，在 Windows 会触发 SmartScreen 提示；正式发布建议配置代码签名。
 
