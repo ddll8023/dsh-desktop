@@ -1,0 +1,78 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.artifact }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --mac dmg --arm64
+            artifact: dsh-desktop-macos-arm64
+          - os: macos-15-intel
+            args: --mac dmg --x64
+            artifact: dsh-desktop-macos-x64
+          - os: windows-latest
+            args: --win nsis --x64
+            artifact: dsh-desktop-windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install desktop build dependencies
+        run: npm ci
+
+      - name: Prepare platform runtime
+        run: npm run prepare:runtime
+
+      - name: Build installer
+        run: npx electron-builder ${{ matrix.args }}
+
+      - name: Upload macOS artifacts
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/*.dmg
+          if-no-files-found: error
+
+      - name: Upload Windows artifacts
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/*.exe
+          if-no-files-found: error
+
+  release:
+    name: publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**
+          generate_release_notes: true

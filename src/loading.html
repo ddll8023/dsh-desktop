@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>DSH Desktop</title>
+<style>
+  html, body { height: 100%; margin: 0; display: flex; align-items: center; justify-content: center;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f6f8; color: #333; }
+  .box { text-align: center; }
+  .spinner { width: 32px; height: 32px; margin: 0 auto 16px; border: 3px solid #ccc; border-top-color: #4f7cff;
+    border-radius: 50%; animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <div>正在启动 DSH ...</div>
+  </div>
+</body>
+</html>

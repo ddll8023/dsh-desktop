@@ -1,0 +1,82 @@
+{
+  "name": "dsh-desktop",
+  "productName": "DSH Desktop",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness desktop wrapper with dsh-codex and dsh-access-mode",
+  "main": "src/main.js",
+  "private": true,
+  "author": "DSH Desktop",
+  "license": "MIT",
+  "scripts": {
+    "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "start": "npm run prepare:runtime && electron .",
+    "pack": "npm run prepare:runtime && electron-builder --dir",
+    "pack:mac": "npm run prepare:runtime && electron-builder --mac dir",
+    "pack:win": "npm run prepare:runtime && electron-builder --win dir",
+    "dist": "npm run prepare:runtime && electron-builder",
+    "dist:mac": "npm run prepare:runtime && electron-builder --mac dmg",
+    "dist:win": "npm run prepare:runtime && electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.dsh.desktop",
+    "productName": "DSH Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/node",
+        "to": "node"
+      },
+      {
+        "from": "resources/runtime",
+        "to": "runtime"
+      },
+      {
+        "from": "resources/profile-web",
+        "to": "profile-web"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "resources/icon.png",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "dmg": {
+      "title": "DSH Desktop ${version}"
+    }
+  }
+}

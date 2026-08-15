@@ -1,0 +1,6 @@
+[submodule "plugins/dsh-codex"]
+	path = plugins/dsh-codex
+	url = https://github.com/ddll8023/dsh-codex.git
+[submodule "plugins/dsh-access-mode"]
+	path = plugins/dsh-access-mode
+	url = https://github.com/ddll8023/dsh-access-mode.git
