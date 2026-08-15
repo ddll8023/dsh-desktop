@@ -4,6 +4,8 @@ node_modules/
 # Generated runtime / Node / profile artifacts (must be built per platform)
 resources/node/
 resources/runtime/
+resources/node.tar.gz
+resources/runtime.tar.gz
 resources/profile-web/
 
 # electron-builder output

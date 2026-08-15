@@ -12,14 +12,22 @@ const resourcesRoot = isDev
   : process.resourcesPath
 
 const isWindows = process.platform === 'win32'
-const nodeBin = process.env.DSH_DESKTOP_NODE || (isWindows
-  ? path.join(resourcesRoot, 'node', 'node.exe')
-  : path.join(resourcesRoot, 'node', 'bin', 'node'))
-const npmCli = isWindows
-  ? path.join(resourcesRoot, 'node', 'node_modules', 'npm', 'bin', 'npm-cli.js')
-  : path.join(resourcesRoot, 'node', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js')
-const seedRuntimeDir = path.join(resourcesRoot, 'runtime')
+const userNodeDir = path.join(app.getPath('userData'), 'node')
 const runtimeDir = path.join(app.getPath('userData'), 'runtime')
+const nodeArchive = path.join(resourcesRoot, 'node.tar.gz')
+const runtimeArchive = path.join(resourcesRoot, 'runtime.tar.gz')
+const bundledArchives = fs.existsSync(nodeArchive) && fs.existsSync(runtimeArchive)
+const seedRuntimeDir = path.join(resourcesRoot, 'runtime')
+const nodeBin = process.env.DSH_DESKTOP_NODE || (bundledArchives
+  ? (isWindows ? path.join(userNodeDir, 'node.exe') : path.join(userNodeDir, 'bin', 'node'))
+  : (isWindows ? path.join(resourcesRoot, 'node', 'node.exe') : path.join(resourcesRoot, 'node', 'bin', 'node')))
+const npmCli = bundledArchives
+  ? (isWindows
+      ? path.join(userNodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')
+      : path.join(userNodeDir, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'))
+  : (isWindows
+      ? path.join(resourcesRoot, 'node', 'node_modules', 'npm', 'bin', 'npm-cli.js')
+      : path.join(resourcesRoot, 'node', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'))
 const dshBin = path.join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js')
 const profileTemplateDir = path.join(resourcesRoot, 'profile-web')
 const dshHome = process.env.DSH_DESKTOP_HOME || path.join(os.homedir(), '.dsh')
@@ -64,14 +72,52 @@ function ensureDshHome() {
   }
 }
 
+function extractArchive(archive, dest) {
+  return new Promise((resolve, reject) => {
+    const tar = isWindows ? 'tar.exe' : 'tar'
+    console.log(`[dsh-desktop] extracting ${path.basename(archive)} ...`)
+    const proc = spawn(tar, ['-xzf', archive, '-C', dest, '--strip-components=1'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let errText = ''
+    proc.stdout.on('data', (buf) => process.stdout.write(`[extract] ${buf.toString()}`))
+    proc.stderr.on('data', (buf) => {
+      errText += buf.toString()
+      process.stderr.write(`[extract] ${buf.toString()}`)
+    })
+    proc.on('error', reject)
+    proc.on('exit', (code) => {
+      if (code === 0) resolve()
+      else reject(new Error(`tar extract failed (${code}): ${errText.slice(-1000)}`))
+    })
+  })
+}
+
 async function ensureRuntime() {
   const marker = path.join(runtimeDir, 'node_modules', '@deepseek-ai', 'dsh', 'package.json')
-  if (fs.existsSync(marker)) return
-  console.log('[dsh-desktop] copying runtime to user data (one-time, may take a while)...')
+  const nodeMarker = isWindows
+    ? path.join(userNodeDir, 'node.exe')
+    : path.join(userNodeDir, 'bin', 'node')
+  if (fs.existsSync(marker) && fs.existsSync(nodeMarker)) return
+  console.log('[dsh-desktop] preparing runtime in user data (one-time, may take a while)...')
   fs.rmSync(runtimeDir, { recursive: true, force: true })
-  fs.mkdirSync(path.dirname(runtimeDir), { recursive: true })
-  await fs.promises.cp(seedRuntimeDir, runtimeDir, { recursive: true })
-  console.log('[dsh-desktop] runtime ready at', runtimeDir)
+  fs.rmSync(userNodeDir, { recursive: true, force: true })
+  fs.mkdirSync(runtimeDir, { recursive: true })
+  fs.mkdirSync(userNodeDir, { recursive: true })
+  if (bundledArchives) {
+    await extractArchive(runtimeArchive, runtimeDir)
+    await extractArchive(nodeArchive, userNodeDir)
+  } else {
+    await fs.promises.cp(seedRuntimeDir, runtimeDir, { recursive: true })
+    const seedNodeDir = path.join(resourcesRoot, 'node')
+    if (fs.existsSync(seedNodeDir)) {
+      await fs.promises.cp(seedNodeDir, userNodeDir, { recursive: true })
+    }
+  }
+  if (!isWindows) {
+    try { fs.chmodSync(path.join(userNodeDir, 'bin', 'node'), 0o755) } catch {}
+  }
+  console.log('[dsh-desktop] runtime ready')
 }
 
 function currentDshVersion() {

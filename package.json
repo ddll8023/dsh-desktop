@@ -34,12 +34,12 @@
     ],
     "extraResources": [
       {
-        "from": "resources/node",
-        "to": "node"
+        "from": "resources/node.tar.gz",
+        "to": "node.tar.gz"
       },
       {
-        "from": "resources/runtime",
-        "to": "runtime"
+        "from": "resources/runtime.tar.gz",
+        "to": "runtime.tar.gz"
       },
       {
         "from": "resources/profile-web",

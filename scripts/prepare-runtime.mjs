@@ -23,6 +23,7 @@ const profileDir = path.join(resources, 'profile-web')
 const nodeDir = path.join(resources, 'node')
 
 const isWindows = process.platform === 'win32'
+const tarCmd = isWindows ? 'tar.exe' : 'tar'
 
 function resolvePluginDir(name) {
   const candidates = [
@@ -62,6 +63,13 @@ function copyIfExists(src, dest) {
   fs.cpSync(src, dest, { recursive: true })
 }
 
+function createArchive(dirName, archiveName) {
+  const archivePath = path.join(resources, archiveName)
+  console.log(`[prepare] archiving ${dirName} -> ${archiveName}`)
+  fs.rmSync(archivePath, { force: true })
+  run(tarCmd, ['-czf', archivePath, '-C', resources, dirName])
+}
+
 async function prepareRuntime() {
   // 1. runtime package.json: dsh + every dependency declared by the plugins.
   const pluginDeps = {}
@@ -82,6 +90,7 @@ async function prepareRuntime() {
   fs.writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify(runtimePkg, null, 2) + '\n')
   console.log('[prepare] installing dsh runtime (this can take a few minutes)...')
   run('npm', ['install', '--prefix', runtimeDir, '--omit=dev', '--no-audit', '--no-fund'])
+  createArchive('runtime', 'runtime.tar.gz')
 
   // 2. profile-web template with the two plugins preinstalled.
   fs.mkdirSync(path.join(profileDir, 'node_modules'), { recursive: true })
@@ -125,6 +134,7 @@ async function prepareRuntime() {
   } else {
     console.log('[prepare] Node runtime already present')
   }
+  createArchive('node', 'node.tar.gz')
   console.log('[prepare] done')
 }
 

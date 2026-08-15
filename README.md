@@ -43,7 +43,7 @@ npm run dist:mac   # macOS DMG（arm64 + x64）
 npm run dist:win   # Windows zip（x64，建议在 Windows 上执行）
 ```
 
-`prepare:runtime` 会生成 `resources/node`、`resources/runtime` 和 `resources/profile-web/node_modules`，这些目录按平台不同，已加入 `.gitignore`，不要提交到仓库。
+`prepare:runtime` 会生成 `resources/node`、`resources/runtime`、`resources/node.tar.gz`、`resources/runtime.tar.gz` 和 `resources/profile-web/node_modules`；这些目录/压缩包按平台不同，已加入 `.gitignore`，不要提交到仓库。安装包内置的是 `node.tar.gz` 和 `runtime.tar.gz`，应用首次启动时会解压到用户数据目录。
 
 ## 发布新版本
 
