@@ -52,7 +52,7 @@ jobs:
       - name: Download release asset
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download "${{ steps.tag.outputs.tag }}" -p "${{ steps.asset.outputs.name }}" -D .
+        run: gh release download "${{ steps.tag.outputs.tag }}" -R ddll8023/dsh-desktop -p "${{ steps.asset.outputs.name }}" -D .
 
       - name: Verify macOS DMG
         if: runner.os == 'macOS'
