@@ -106,7 +106,9 @@ async function ensureRuntime() {
   fs.mkdirSync(userNodeDir, { recursive: true })
   if (bundledArchives) {
     await extractArchive(runtimeArchive, runtimeDir)
+    console.log('[dsh-desktop] runtime archive extracted')
     await extractArchive(nodeArchive, userNodeDir)
+    console.log('[dsh-desktop] node archive extracted')
   } else {
     await fs.promises.cp(seedRuntimeDir, runtimeDir, { recursive: true })
     const seedNodeDir = path.join(resourcesRoot, 'node')

@@ -26,6 +26,7 @@ jobs:
             args: --win zip --x64 --publish never --config.compression=store
             artifact: dsh-desktop-windows-x64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,13 +38,32 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
 
+      - name: Resolve plugin versions for cache key
+        id: versions
+        shell: bash
+        run: |
+          echo "codex=$(git -C plugins/dsh-codex rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "access=$(git -C plugins/dsh-access-mode rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache DSH runtime
+        uses: actions/cache@v4
+        with:
+          path: |
+            resources/node
+            resources/runtime
+            resources/node.tar.gz
+            resources/runtime.tar.gz
+          key: dsh-runtime-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.codex }}-${{ steps.versions.outputs.access }}
+
       - name: Install desktop build dependencies
         run: npm ci
 
       - name: Prepare platform runtime
+        timeout-minutes: 30
         run: npm run prepare:runtime
 
       - name: Build installer
+        timeout-minutes: 30
         run: npx electron-builder ${{ matrix.args }}
 
       - name: Upload macOS artifacts
@@ -66,6 +86,7 @@ jobs:
     name: publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/download-artifact@v4
         with:

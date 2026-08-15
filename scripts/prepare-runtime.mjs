@@ -45,9 +45,13 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'))
 }
 
+function log(msg) {
+  console.log(`[${new Date().toISOString()}] ${msg}`)
+}
+
 function run(cmd, args, opts = {}) {
   const executable = isWindows && cmd === 'npm' ? 'npm.cmd' : cmd
-  console.log(`[prepare] ${executable} ${args.join(' ')}`)
+  log(`[prepare] ${executable} ${args.join(' ')}`)
   const result = spawnSync(executable, args, {
     stdio: 'inherit',
     shell: isWindows && cmd === 'npm',
@@ -65,7 +69,7 @@ function copyIfExists(src, dest) {
 
 function createArchive(dirName, archiveName) {
   const archivePath = path.join(resources, archiveName)
-  console.log(`[prepare] archiving ${dirName} -> ${archiveName}`)
+  log(`[prepare] archiving ${dirName} -> ${archiveName}`)
   fs.rmSync(archivePath, { force: true })
   run(tarCmd, ['-czf', archivePath, '-C', resources, dirName])
 }
@@ -88,7 +92,7 @@ async function prepareRuntime() {
   }
   fs.mkdirSync(runtimeDir, { recursive: true })
   fs.writeFileSync(path.join(runtimeDir, 'package.json'), JSON.stringify(runtimePkg, null, 2) + '\n')
-  console.log('[prepare] installing dsh runtime (this can take a few minutes)...')
+  log('[prepare] installing dsh runtime (this can take a few minutes)...')
   run('npm', ['install', '--prefix', runtimeDir, '--omit=dev', '--no-audit', '--no-fund'])
   createArchive('runtime', 'runtime.tar.gz')
 
@@ -101,7 +105,7 @@ async function prepareRuntime() {
     for (const entry of ['package.json', 'lib', 'src', 'scripts', 'cordis.patch.yml', 'README.md', 'LICENSE']) {
       copyIfExists(path.join(dir, entry), path.join(dest, entry))
     }
-    console.log(`[prepare] copied plugin ${pkg.name}`)
+    log(`[prepare] copied plugin ${pkg.name}`)
   }
   const profileManifest = {
     name: 'dsh-profile-web',
@@ -132,14 +136,14 @@ async function prepareRuntime() {
   if (!fs.existsSync(nodeBin) || !fs.existsSync(npmCli)) {
     await downloadNode(nodeDir)
   } else {
-    console.log('[prepare] Node runtime already present')
+    log('[prepare] Node runtime already present')
   }
   createArchive('node', 'node.tar.gz')
-  console.log('[prepare] done')
+  log('[prepare] done')
 }
 
 async function downloadNode(nodeDir) {
-  console.log('[prepare] downloading standalone Node.js...')
+  log('[prepare] downloading standalone Node.js...')
   const res = await fetch('https://nodejs.org/dist/index.json')
   if (!res.ok) throw new Error(`failed to fetch node index: ${res.status}`)
   const releases = await res.json()
@@ -155,7 +159,7 @@ async function downloadNode(nodeDir) {
   const tmp = path.join(os.tmpdir(), archive)
   const extractDir = path.join(os.tmpdir(), `node-${version}-${platform}-${arch}`)
 
-  console.log(`[prepare] downloading ${url}`)
+  log(`[prepare] downloading ${url}`)
   const dl = await fetch(url)
   if (!dl.ok) throw new Error(`failed to download node: ${dl.status}`)
   fs.mkdirSync(path.dirname(tmp), { recursive: true })
@@ -183,7 +187,7 @@ async function downloadNode(nodeDir) {
 
   fs.rmSync(tmp, { force: true })
   fs.rmSync(extractDir, { recursive: true, force: true })
-  console.log(`[prepare] Node ${version} ready`)
+  log(`[prepare] Node ${version} ready`)
 }
 
 await prepareRuntime()
