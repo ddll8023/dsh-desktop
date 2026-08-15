@@ -23,7 +23,7 @@ jobs:
             args: --mac dmg --x64 --publish never
             artifact: dsh-desktop-macos-x64
           - os: windows-latest
-            args: --win nsis --x64 --publish never --config.compression=store
+            args: --win zip --x64 --publish never
             artifact: dsh-desktop-windows-x64
     runs-on: ${{ matrix.os }}
     steps:
@@ -59,7 +59,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: release/*.exe
+          path: release/*.zip
           if-no-files-found: error
 
   release:

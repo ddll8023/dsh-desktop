@@ -15,7 +15,8 @@
     "pack:win": "npm run prepare:runtime && electron-builder --win dir",
     "dist": "npm run prepare:runtime && electron-builder",
     "dist:mac": "npm run prepare:runtime && electron-builder --mac dmg",
-    "dist:win": "npm run prepare:runtime && electron-builder --win nsis"
+    "dist:win": "npm run prepare:runtime && electron-builder --win zip",
+    "dist:win:nsis": "npm run prepare:runtime && electron-builder --win nsis"
   },
   "devDependencies": {
     "electron": "^33.4.11",

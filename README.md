@@ -11,7 +11,7 @@ DeepSeek Harness 桌面封装：内置 DSH Web、`dsh-codex` 和 `dsh-access-mod
 正式安装包发布在 GitHub Releases：
 
 - macOS：`DSH Desktop-<version>-arm64.dmg` / `DSH Desktop-<version>-x64.dmg`
-- Windows：`DSH Desktop-<version>-x64.exe`（NSIS 安装器）
+- Windows：`DSH Desktop-<version>-x64.zip`（免安装压缩包）
 
 > 未签名的预览版在 macOS 会触发 Gatekeeper 提示，在 Windows 会触发 SmartScreen 提示；正式发布建议配置代码签名。
 
@@ -40,7 +40,7 @@ npm run dist
 
 ```bash
 npm run dist:mac   # macOS DMG（arm64 + x64）
-npm run dist:win   # Windows NSIS（x64，建议在 Windows 上执行）
+npm run dist:win   # Windows zip（x64，建议在 Windows 上执行）
 ```
 
 `prepare:runtime` 会生成 `resources/node`、`resources/runtime` 和 `resources/profile-web/node_modules`，这些目录按平台不同，已加入 `.gitignore`，不要提交到仓库。
