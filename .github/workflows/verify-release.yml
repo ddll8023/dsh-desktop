@@ -1,0 +1,76 @@
+name: verify-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to verify'
+        required: false
+        default: 'v0.1.0'
+  release:
+    types: [published]
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - macos-15-intel
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.inputs.tag || 'v0.1.0' }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute asset name
+        id: asset
+        shell: bash
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${TAG#v}"
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ "$RUNNER_ARCH" = "ARM64" ]; then
+              echo "name=DSH.Desktop-${VERSION}-arm64.dmg" >> "$GITHUB_OUTPUT"
+            else
+              echo "name=DSH.Desktop-${VERSION}.dmg" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "name=DSH.Desktop-${VERSION}-win.zip" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ steps.tag.outputs.tag }}" -p "${{ steps.asset.outputs.name }}" -D .
+
+      - name: Verify macOS DMG
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil attach "${{ steps.asset.outputs.name }}" -nobrowse -readonly -mountpoint /tmp/dsh-mnt
+          test -d "/tmp/dsh-mnt/DSH Desktop.app"
+          test -f "/tmp/dsh-mnt/DSH Desktop.app/Contents/MacOS/DSH Desktop"
+          test -f "/tmp/dsh-mnt/DSH Desktop.app/Contents/Resources/node.tar.gz"
+          test -f "/tmp/dsh-mnt/DSH Desktop.app/Contents/Resources/runtime.tar.gz"
+          test -d "/tmp/dsh-mnt/DSH Desktop.app/Contents/Resources/profile-web"
+          hdiutil detach /tmp/dsh-mnt
+
+      - name: Verify Windows zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Expand-Archive -LiteralPath "${{ steps.asset.outputs.name }}" -DestinationPath extracted -Force
+          Test-Path "extracted/DSH Desktop.exe"
+          Test-Path "extracted/resources/node.tar.gz"
+          Test-Path "extracted/resources/runtime.tar.gz"
+          Test-Path "extracted/resources/profile-web"
