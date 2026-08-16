@@ -39,8 +39,8 @@ npm run dist
 也可以分别构建：
 
 ```bash
-npm run dist:mac   # macOS DMG + ZIP（arm64 + x64）
-npm run dist:win   # Windows NSIS + ZIP（x64，建议在 Windows 上执行）
+npm run dist:mac   # 当前 macOS 架构的 DMG + ZIP
+npm run dist:win   # 当前 Windows 架构的 NSIS + ZIP（建议在 Windows 上执行）
 ```
 
 `prepare:runtime` 会生成 `resources/node`、`resources/runtime`、`resources/node.tar.gz`、`resources/runtime.tar.gz` 和 `resources/profile-web/node_modules`；这些目录/压缩包按平台不同，已加入 `.gitignore`，不要提交到仓库。安装包内置的是 `node.tar.gz` 和 `runtime.tar.gz`，应用首次启动时会解压到用户数据目录。
@@ -75,4 +75,4 @@ dsh-desktop/
 - 应用启动时会按 runtime manifest 将内置 Node、DSH runtime 和插件同步到用户数据目录，并在后台启动 `dsh web`。
 - 桌面更新使用 `electron-updater`；更新包包含 Electron 壳、Node、DSH runtime、内置插件和 Web 资源，用户数据目录 `~/.dsh` 会保留。
 - runtime 使用版本化目录和当前版本指针，更新失败时继续使用上一份可用 runtime。
-- 如需支持 Windows ARM64，可增加 `windows-11-arm` runner 并在 `package.json` 的 `win.target` 中加入 `arm64`。
+- 如需支持 Windows ARM64，可增加 `windows-11-arm` runner，并在发布 workflow 的矩阵中加入 `--arm64`。
