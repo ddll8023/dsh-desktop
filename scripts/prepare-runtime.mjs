@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
+const appPackage = readJson(path.join(root, 'package.json'))
 const resources = path.join(root, 'resources')
 const runtimeDir = path.join(resources, 'runtime')
 const profileDir = path.join(resources, 'profile-web')
@@ -43,6 +44,22 @@ const pluginDirs = [
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'))
+}
+
+function gitRevision(dir) {
+  const result = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  return result.status === 0 ? result.stdout.trim() : 'unknown'
+}
+
+function getNodeVersion(nodeBin) {
+  const result = spawnSync(nodeBin, ['-p', 'process.versions.node'], {
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'ignore'],
+  })
+  return result.status === 0 ? result.stdout.trim() : 'unknown'
 }
 
 function log(msg) {
@@ -133,7 +150,7 @@ async function prepareRuntime() {
   fs.writeFileSync(path.join(profileDir, 'cordis.patch.yml'), '[]\n')
   fs.writeFileSync(path.join(profileDir, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n')
 
-  // 3. standalone Node runtime (full distribution, includes npm for updates).
+  // 3. standalone Node runtime (full distribution bundled with the app).
   const nodeBin = isWindows
     ? path.join(nodeDir, 'node.exe')
     : path.join(nodeDir, 'bin', 'node')
@@ -146,6 +163,34 @@ async function prepareRuntime() {
     log('[prepare] Node runtime already present')
   }
   createArchive('node', 'node.tar.gz')
+
+  const plugins = pluginDirs.map((dir) => {
+    const pkg = readJson(path.join(dir, 'package.json'))
+    return {
+      name: pkg.name,
+      version: pkg.version || 'unknown',
+      revision: gitRevision(dir),
+    }
+  })
+  const manifest = {
+    schemaVersion: 1,
+    desktopVersion: appPackage.version,
+    dshVersion: runtimePkg.dependencies['@deepseek-ai/dsh'],
+    nodeVersion: getNodeVersion(nodeBin),
+    plugins,
+  }
+  manifest.releaseId = [
+    manifest.desktopVersion,
+    manifest.dshVersion,
+    manifest.nodeVersion,
+    ...plugins.map((plugin) => `${plugin.name}@${plugin.version}:${plugin.revision.slice(0, 12)}`),
+  ].join('|')
+  fs.writeFileSync(
+    path.join(profileDir, '.dsh-desktop-profile-manifest.json'),
+    JSON.stringify({ schemaVersion: 1, plugins: Object.fromEntries(plugins.map((plugin) => [plugin.name, plugin])) }, null, 2) + '\n',
+  )
+  fs.writeFileSync(path.join(resources, 'runtime-manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
+  log(`[prepare] wrote runtime manifest for desktop ${manifest.desktopVersion}`)
   log('[prepare] done')
 }
 

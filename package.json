@@ -1,7 +1,7 @@
 {
   "name": "dsh-desktop",
   "productName": "DSH Desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "DeepSeek Harness desktop wrapper with dsh-codex and dsh-access-mode",
   "main": "src/main.js",
   "private": true,
@@ -14,13 +14,14 @@
     "pack:mac": "npm run prepare:runtime && electron-builder --mac dir",
     "pack:win": "npm run prepare:runtime && electron-builder --win dir",
     "dist": "npm run prepare:runtime && electron-builder",
-    "dist:mac": "npm run prepare:runtime && electron-builder --mac dmg",
-    "dist:win": "npm run prepare:runtime && electron-builder --win zip",
+    "dist:mac": "npm run prepare:runtime && electron-builder --mac",
+    "dist:win": "npm run prepare:runtime && electron-builder --win",
     "dist:win:nsis": "npm run prepare:runtime && electron-builder --win nsis"
   },
   "devDependencies": {
     "electron": "^33.4.11",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "js-yaml": "^5.3.0"
   },
   "build": {
     "appId": "com.dsh.desktop",
@@ -28,6 +29,14 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ddll8023",
+        "repo": "dsh-desktop",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "src/**/*",
       "package.json"
@@ -40,6 +49,10 @@
       {
         "from": "resources/runtime.tar.gz",
         "to": "runtime.tar.gz"
+      },
+      {
+        "from": "resources/runtime-manifest.json",
+        "to": "runtime-manifest.json"
       },
       {
         "from": "resources/profile-web",
@@ -56,6 +69,13 @@
             "arm64",
             "x64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ]
     },
@@ -64,6 +84,12 @@
       "target": [
         {
           "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
           "arch": [
             "x64"
           ]
@@ -79,5 +105,8 @@
     "dmg": {
       "title": "DSH Desktop ${version}"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

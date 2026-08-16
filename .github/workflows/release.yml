@@ -17,13 +17,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            args: --mac dmg --arm64 --publish never
+            args: --mac --arm64 --publish never
             artifact: dsh-desktop-macos-arm64
           - os: macos-15-intel
-            args: --mac dmg --x64 --publish never
+            args: --mac --x64 --publish never
             artifact: dsh-desktop-macos-x64
           - os: windows-latest
-            args: --win zip --x64 --publish never --config.compression=store
+            args: --win --x64 --publish never --config.compression=store
             artifact: dsh-desktop-windows-x64
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
@@ -37,6 +37,11 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
+
+      - name: Verify tag matches app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
 
       - name: Resolve plugin versions for cache key
         id: versions
@@ -53,7 +58,8 @@ jobs:
             resources/runtime
             resources/node.tar.gz
             resources/runtime.tar.gz
-          key: dsh-runtime-${{ runner.os }}-${{ runner.arch }}-${{ steps.versions.outputs.codex }}-${{ steps.versions.outputs.access }}
+            resources/runtime-manifest.json
+          key: dsh-runtime-${{ runner.os }}-${{ runner.arch }}-${{ github.ref_name }}-${{ steps.versions.outputs.codex }}-${{ steps.versions.outputs.access }}
 
       - name: Install desktop build dependencies
         run: npm ci
@@ -71,7 +77,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest*.yml
+            release/*.blockmap
           if-no-files-found: error
 
       - name: Upload Windows artifacts
@@ -79,7 +89,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
-          path: release/*.zip
+          path: |
+            release/*.exe
+            release/*.zip
+            release/latest*.yml
+            release/*.blockmap
           if-no-files-found: error
 
   release:
@@ -88,10 +102,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install release tooling
+        run: npm ci --ignore-scripts
+
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          merge-multiple: true
+          merge-multiple: false
+
+      - name: Merge updater metadata
+        run: node scripts/merge-update-manifests.mjs dist
 
       - uses: softprops/action-gh-release@v2
         with:

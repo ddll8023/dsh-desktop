@@ -6,6 +6,7 @@ resources/node/
 resources/runtime/
 resources/node.tar.gz
 resources/runtime.tar.gz
+resources/runtime-manifest.json
 resources/profile-web/
 
 # electron-builder output

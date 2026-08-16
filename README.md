@@ -10,10 +10,10 @@ DeepSeek Harness 桌面封装：内置 DSH Web、`dsh-codex` 和 `dsh-access-mod
 
 正式安装包发布在 GitHub Releases：
 
-- macOS：`DSH.Desktop-<version>-arm64.dmg` / `DSH.Desktop-<version>.dmg`
-- Windows：`DSH.Desktop-<version>-win.zip`（免安装压缩包）
+- macOS：DMG（手动安装）+ ZIP（自动更新，Apple Silicon / Intel）
+- Windows：NSIS 安装包（自动更新）+ ZIP（手动下载）
 
-> 未签名的预览版在 macOS 会触发 Gatekeeper 提示，在 Windows 会触发 SmartScreen 提示；正式发布建议配置代码签名。
+> 未签名的预览版在 macOS 会触发 Gatekeeper 提示，在 Windows 会触发 SmartScreen 提示；正式发布必须配置代码签名与公证，否则自动更新可能被系统拦截。
 
 ## 从源码构建
 
@@ -39,20 +39,24 @@ npm run dist
 也可以分别构建：
 
 ```bash
-npm run dist:mac   # macOS DMG（arm64 + x64）
-npm run dist:win   # Windows zip（x64，建议在 Windows 上执行）
+npm run dist:mac   # macOS DMG + ZIP（arm64 + x64）
+npm run dist:win   # Windows NSIS + ZIP（x64，建议在 Windows 上执行）
 ```
 
 `prepare:runtime` 会生成 `resources/node`、`resources/runtime`、`resources/node.tar.gz`、`resources/runtime.tar.gz` 和 `resources/profile-web/node_modules`；这些目录/压缩包按平台不同，已加入 `.gitignore`，不要提交到仓库。安装包内置的是 `node.tar.gz` 和 `runtime.tar.gz`，应用首次启动时会解压到用户数据目录。
 
 ## 发布新版本
 
-推送 `v*` tag 后，GitHub Actions 会在 macOS / Windows 上构建安装包并自动上传到 GitHub Releases：
+每次发布完整桌面更新都必须递增 `package.json` 的版本号，并推送对应的 `v*` tag。GitHub Actions 会在 macOS / Windows 上构建安装包、生成自动更新元数据并上传到 GitHub Releases：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
+
+已安装用户启动应用后会检查 GitHub Releases；发现新版本时提示用户下载，下载完成后重启应用即可更新整个软件。macOS 的 `latest-mac.yml` 由 CI 合并 arm64 / x64 两个构建产物，Windows 使用 `latest.yml`。
+
+正式发布前还需要在 GitHub Actions 配置 macOS Developer ID 签名与公证、Windows Authenticode 签名。签名证书和密码只能通过 Actions Secrets 注入。
 
 ## 仓库结构
 
@@ -68,6 +72,7 @@ dsh-desktop/
 
 ## 说明
 
-- 应用启动时会复制内置 runtime 到用户数据目录，并在后台启动 `dsh web`。
-- 更新检查通过 npm registry 获取 `@deepseek-ai/dsh` 最新版本，使用内置 npm 更新 runtime。
+- 应用启动时会按 runtime manifest 将内置 Node、DSH runtime 和插件同步到用户数据目录，并在后台启动 `dsh web`。
+- 桌面更新使用 `electron-updater`；更新包包含 Electron 壳、Node、DSH runtime、内置插件和 Web 资源，用户数据目录 `~/.dsh` 会保留。
+- runtime 使用版本化目录和当前版本指针，更新失败时继续使用上一份可用 runtime。
 - 如需支持 Windows ARM64，可增加 `windows-11-arm` runner 并在 `package.json` 的 `win.target` 中加入 `arm64`。
