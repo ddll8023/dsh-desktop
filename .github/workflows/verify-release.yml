@@ -41,12 +41,12 @@ jobs:
           VERSION="${TAG#v}"
           if [ "$RUNNER_OS" = "macOS" ]; then
             if [ "$RUNNER_ARCH" = "ARM64" ]; then
-              echo "name=DSH.Desktop-${VERSION}-arm64.dmg" >> "$GITHUB_OUTPUT"
+              echo "name=DSH-Desktop-${VERSION}-arm64-mac.dmg" >> "$GITHUB_OUTPUT"
             else
-              echo "name=DSH.Desktop-${VERSION}.dmg" >> "$GITHUB_OUTPUT"
+              echo "name=DSH-Desktop-${VERSION}-x64-mac.dmg" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "name=DSH.Desktop-${VERSION}-win.zip" >> "$GITHUB_OUTPUT"
+            echo "name=DSH-Desktop-${VERSION}-x64-win.zip" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download release asset

@@ -3,7 +3,9 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, dialog } = require('electron')
 const { autoUpdater } = require('electron-updater')
 const { spawn } = require('node:child_process')
+const crypto = require('node:crypto')
 const fs = require('node:fs')
+const https = require('node:https')
 const os = require('node:os')
 const path = require('node:path')
 
@@ -25,6 +27,13 @@ const seedNodeDir = path.join(resourcesRoot, 'node')
 const profileTemplateDir = path.join(resourcesRoot, 'profile-web')
 const dshHome = process.env.DSH_DESKTOP_HOME || path.join(os.homedir(), '.dsh')
 
+const isMac = process.platform === 'darwin'
+const updatesDir = path.join(userDataRoot, 'updates')
+const updateResultFile = path.join(updatesDir, 'result.json')
+const updateRequestFile = path.join(updatesDir, 'request.json')
+const updaterHelper = path.join(process.resourcesPath, 'update-helper.js')
+const updaterRepo = 'ddll8023/dsh-desktop'
+
 let runtimeDir = null
 let nodeBin = null
 let dshBin = null
@@ -39,6 +48,8 @@ let updating = false
 let updateDownloaded = false
 let updatePromptShown = false
 let pendingUpdateVersion = null
+let pendingUpdateZip = null
+let installSpawned = false
 
 function readJson(file) {
   try {
@@ -403,6 +414,7 @@ async function promptForUpdate(info) {
 
 function setupAutoUpdater() {
   if (isDev) return
+  if (!isWindows) return // macOS 走自定义更新器（setupMacUpdater），免签名
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
   autoUpdater.on('checking-for-update', () => {
@@ -459,10 +471,296 @@ function setupAutoUpdater() {
 
 async function checkForAppUpdates() {
   if (isDev || updating || updateDownloaded) return
+  if (isWindows) {
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (err) {
+      console.error('[dsh-desktop] update check failed:', err)
+    }
+    return
+  }
+  await checkForMacUpdates()
+}
+
+// ---------- macOS 免签名自定义更新器 ----------
+// 未签名产物无法通过 Squirrel.Mac 的代码签名校验（"Code signature ... did not
+// pass validation"），因此 macOS 不使用 electron-updater，改为：GitHub Releases
+// 检查版本 → 按架构匹配资产并核对 SHA-512 → 下载 ZIP → 退出后由独立 helper
+// （ELECTRON_RUN_AS_NODE=1 运行 update-helper.js）校验、解压、原子替换并重启。
+
+function parseVersion(version) {
+  return String(version).replace(/^v/, '').split('.').map((part) => parseInt(part, 10) || 0)
+}
+
+function semverGt(a, b) {
+  const av = parseVersion(a)
+  const bv = parseVersion(b)
+  for (let i = 0; i < Math.max(av.length, bv.length); i++) {
+    const diff = (av[i] || 0) - (bv[i] || 0)
+    if (diff !== 0) return diff > 0
+  }
+  return false
+}
+
+// GitHub 下载 URL 会 302 跳转到对象存储，Node https 不自动跟随，需手动处理
+function getResponse(url, maxRedirects = 10) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, { headers: { 'User-Agent': 'DSH-Desktop-Updater' } }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume()
+        if (maxRedirects <= 0) {
+          reject(new Error(`重定向次数过多：${url}`))
+          return
+        }
+        const next = new URL(res.headers.location, url).toString()
+        getResponse(next, maxRedirects - 1).then(resolve, reject)
+        return
+      }
+      if (res.statusCode !== 200) {
+        res.resume()
+        reject(new Error(`HTTP ${res.statusCode} ${url}`))
+        return
+      }
+      resolve(res)
+    })
+    request.on('error', reject)
+  })
+}
+
+function httpsGetJson(url) {
+  return getResponse(url).then((res) => new Promise((resolve, reject) => {
+    let body = ''
+    res.setEncoding('utf8')
+    res.on('data', (chunk) => { body += chunk })
+    res.on('end', () => {
+      try { resolve(JSON.parse(body)) } catch (err) { reject(new Error(`无效 JSON：${url}`)) }
+    })
+    res.on('error', reject)
+  }))
+}
+
+function httpsGetText(url) {
+  return getResponse(url).then((res) => new Promise((resolve, reject) => {
+    let body = ''
+    res.setEncoding('utf8')
+    res.on('data', (chunk) => { body += chunk })
+    res.on('end', () => resolve(body))
+    res.on('error', reject)
+  }))
+}
+
+// 解析 CI 生成的 latest-mac.yml（js-yaml 直出格式）：
+//   files:
+//     - url: X
+//       sha512: Y
+//       size: N
+function parseUpdaterYml(text) {
+  const result = { version: null, files: [] }
+  const versionMatch = /^version:\s*(\S+)/m.exec(text)
+  if (versionMatch) result.version = versionMatch[1]
+  const fileRe = /-\s*url:\s*(\S+)\s*\n\s*sha512:\s*(\S+)\s*\n\s*size:\s*(\d+)/g
+  let match
+  while ((match = fileRe.exec(text)) !== null) {
+    result.files.push({ url: match[1], sha512: match[2], size: Number(match[3]) })
+  }
+  if (result.files.length === 0) {
+    const singleRe = /^path:\s*(\S+)\s*\nsha512:\s*(\S+)\s*\nsize:\s*(\d+)/m
+    const single = singleRe.exec(text)
+    if (single) result.files.push({ url: single[1], sha512: single[2], size: Number(single[3]) })
+  }
+  return result
+}
+
+function downloadFile(url, destPath, onProgress) {
+  return getResponse(url).then((res) => new Promise((resolve, reject) => {
+    fs.mkdirSync(path.dirname(destPath), { recursive: true })
+    const tempPath = `${destPath}.part`
+    const hash = crypto.createHash('sha512')
+    const file = fs.createWriteStream(tempPath)
+    const total = Number(res.headers['content-length']) || 0
+    let received = 0
+    res.on('data', (chunk) => {
+      received += chunk.length
+      hash.update(chunk)
+      if (total > 0 && onProgress) onProgress((received / total) * 100)
+    })
+    res.pipe(file)
+    res.on('error', (err) => {
+      file.destroy()
+      reject(err)
+    })
+    file.on('finish', () => {
+      file.close(() => {
+        try {
+          fs.renameSync(tempPath, destPath)
+        } catch (err) {
+          reject(err)
+          return
+        }
+        resolve({ size: fs.statSync(destPath).size, sha512: hash.digest('base64') })
+      })
+    })
+    file.on('error', (err) => {
+      fs.rmSync(tempPath, { force: true })
+      reject(err)
+    })
+  }))
+}
+
+async function checkForMacUpdates() {
+  if (isDev || updating || updateDownloaded) return
   try {
-    await autoUpdater.checkForUpdates()
+    const release = await httpsGetJson(`https://api.github.com/repos/${updaterRepo}/releases/latest`)
+    const version = String(release.tag_name || '').replace(/^v/, '')
+    if (!version) {
+      console.log('[dsh-desktop] no latest release found')
+      return
+    }
+    if (!semverGt(version, app.getVersion())) {
+      console.log(`[dsh-desktop] desktop is up to date: ${app.getVersion()}`)
+      return
+    }
+    const archSuffix = `${process.arch === 'arm64' ? 'arm64' : 'x64'}-mac.zip`
+    const asset = Array.isArray(release.assets)
+      ? release.assets.find((item) => String(item.name || '').endsWith(archSuffix))
+      : null
+    if (!asset) {
+      console.log(`[dsh-desktop] no ${archSuffix} asset in release ${release.tag_name}`)
+      return
+    }
+    await promptForMacUpdate(version, asset)
   } catch (err) {
-    console.error('[dsh-desktop] update check failed:', err)
+    console.error('[dsh-desktop] mac update check failed:', err)
+  }
+}
+
+async function promptForMacUpdate(version, asset) {
+  if (updatePromptShown || updating || updateDownloaded || !mainWindow || mainWindow.isDestroyed()) return
+  updatePromptShown = true
+  try {
+    const choice = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['下载更新', '暂不'],
+      defaultId: 0,
+      cancelId: 1,
+      title: '发现新版本',
+      message: 'DSH Desktop 有新版本',
+      detail: `当前版本：${app.getVersion()}\n最新版本：${version}\n\n更新将替换整个桌面应用及内置运行时，用户数据不会被删除。下载完成后需要重启应用。`,
+    })
+    if (choice.response !== 0) return
+    pendingUpdateVersion = version
+    updating = true
+    showUpdating(version)
+
+    const zipPath = path.join(updatesDir, asset.name)
+    fs.rmSync(zipPath, { force: true })
+    const tag = `v${version}`
+    let sha512 = null
+    let sha512Reason = null
+    try {
+      const manifest = parseUpdaterYml(await httpsGetText(`https://github.com/${updaterRepo}/releases/download/${tag}/latest-mac.yml`))
+      const entry = manifest.files.find((item) => item.url === asset.name)
+      if (entry && entry.sha512) sha512 = entry.sha512
+      else sha512Reason = `latest-mac.yml 中未找到 ${asset.name} 的 sha512`
+    } catch (err) {
+      sha512Reason = `无法获取 latest-mac.yml：${err.message}`
+    }
+    if (!sha512) {
+      console.warn(`[dsh-desktop] ${sha512Reason}；降级为仅 HTTPS 完整性校验`)
+    }
+
+    const result = await downloadFile(asset.browser_download_url, zipPath, (percent) => {
+      showUpdating(version, percent)
+    })
+    if (sha512 && result.sha512 !== sha512) {
+      fs.rmSync(zipPath, { force: true })
+      throw new Error(`更新包 SHA-512 校验失败（期望 ${sha512.slice(0, 16)}…，实际 ${result.sha512.slice(0, 16)}…）`)
+    }
+
+    updating = false
+    updateDownloaded = true
+    pendingUpdateZip = zipPath
+    restoreWindowTitle()
+    const installChoice = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['立即重启安装', '稍后'],
+      defaultId: 0,
+      cancelId: 1,
+      title: '更新已下载',
+      message: `DSH Desktop ${version} 已准备就绪`,
+      detail: '立即重启将安装更新；选择“稍后”则会在下次退出应用时安装。',
+    })
+    if (installChoice.response === 0) {
+      restartToInstall(version, zipPath)
+    }
+  } catch (err) {
+    updating = false
+    restoreWindowTitle()
+    console.error('[dsh-desktop] mac update download failed:', err)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'error',
+        title: '更新失败',
+        message: '无法下载新版本，请稍后重试。',
+        detail: String(err && err.message ? err.message : err),
+      })
+    }
+  } finally {
+    updatePromptShown = false
+  }
+}
+
+function restartToInstall(version, zipPath) {
+  if (installSpawned) return
+  installSpawned = true
+  quitting = true
+  killChild()
+  const helper = updaterHelper
+  if (!fs.existsSync(helper)) {
+    showError(`更新安装器缺失：${helper}\n请重新安装应用后重试。`)
+    installSpawned = false
+    return
+  }
+  const appRoot = path.resolve(process.execPath, '..', '..')
+  writeJsonAtomic(updateRequestFile, {
+    zip: zipPath,
+    version,
+    resultFile: updateResultFile,
+    appRoot,
+    parentPid: process.pid,
+  })
+  console.log(`[dsh-desktop] spawning updater helper for ${version}`)
+  const child = spawn(process.execPath, [helper, updateRequestFile], {
+    env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    detached: true,
+    stdio: 'ignore',
+  })
+  child.unref()
+  app.quit()
+}
+
+function readUpdateResult() {
+  if (!isMac || !fs.existsSync(updateResultFile)) return
+  let result = null
+  try {
+    result = JSON.parse(fs.readFileSync(updateResultFile, 'utf8'))
+  } catch {}
+  fs.rmSync(updateResultFile, { force: true })
+  if (!result || !mainWindow || mainWindow.isDestroyed()) return
+  if (result.ok) {
+    void dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: '更新完成',
+      message: `DSH Desktop 已更新到 ${result.version}`,
+      detail: `安装位置：${result.appRoot || ''}`,
+    })
+  } else {
+    void dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: '更新失败',
+      message: '上次更新未能完成',
+      detail: String(result.error || '未知错误'),
+    })
   }
 }
 
@@ -524,6 +822,7 @@ if (!gotLock) {
     ensureDshHome()
     startDsh()
     setupAutoUpdater()
+    readUpdateResult()
     setTimeout(() => { void checkForAppUpdates() }, 5000)
 
     app.on('activate', () => {
@@ -537,6 +836,10 @@ if (!gotLock) {
   app.on('before-quit', () => {
     quitting = true
     killChild()
+    // macOS：用户选择“稍后”后，退出时自动安装已下载的更新
+    if (isMac && updateDownloaded && !installSpawned && pendingUpdateVersion && pendingUpdateZip) {
+      restartToInstall(pendingUpdateVersion, pendingUpdateZip)
+    }
   })
 
   app.on('window-all-closed', () => {
